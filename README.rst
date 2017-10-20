@@ -51,14 +51,14 @@ Once in the GUI, you can change between different viewing modes:
 ============= ========= ====================================================================
 Key shortcut  Mode      Description
 ============= ========= ====================================================================
-``c``           color     display color-optimized image
-``h``           highres   display resolution optimized image
-``o``           optimal   (default) display an optimal representation of the image. Trade-off between coloraccuracy and resolution
-``a``           ascii     display a black-and-white representation of the image
-``e``           edge      (experimental) edge detection based rendering
-``r``           --        refresh the screen
-``q``           --        quit
-============== ========= ====================================================================
+``c``         color     display color-optimized image
+``h``         highres   display resolution optimized image
+``o``         optimal   (default) display an optimal representation of the image. Trade-off between coloraccuracy and resolution
+``a``         ascii     display a black-and-white representation of the image
+``e``         edge      (experimental) edge detection based rendering
+``r``         --        refresh the screen
+``q``         --        quit
+============= ========= ====================================================================
 
 Limitations
 ===========
