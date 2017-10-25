@@ -48,17 +48,30 @@ GUI modes
 Once in the GUI, you can change between different viewing modes:
 
 
-============= ========= ====================================================================
-Key shortcut  Mode      Description
-============= ========= ====================================================================
-``c``         color     display color-optimized image
-``h``         highres   display resolution optimized image
-``o``         optimal   (default) display an optimal representation of the image. Trade-off between coloraccuracy and resolution
-``a``         ascii     display a black-and-white representation of the image
-``e``         edge      (experimental) edge detection based rendering
-``r``         --        refresh the screen
-``q``         --        quit
-============= ========= ====================================================================
++--------------------------+---------+-------------------------------------------------------------+
+| Key shortcut             |  Mode   |  Description                                                |
++==========================+=========+=============================================================+
+| ``C``                    | color   | display color-optimized image                               |
++--------------------------+---------+-------------------------------------------------------------+
+| ``H``                    | highres | display resolution optimized image                          |
++--------------------------+---------+-------------------------------------------------------------+
+| ``O``                    | optimal | (default) display an optimal representation of the image.   |
+|                          |         | Trade-off between color accuracy and resolution             |
++--------------------------+---------+-------------------------------------------------------------+
+| ``A``                    | ascii   | display a black-and-white representation of the image       |
++--------------------------+---------+-------------------------------------------------------------+
+| ``E``                    | edge    | (experimental) edge detection based rendering               |
++--------------------------+---------+-------------------------------------------------------------+
+| ``+``/``-``              | --      | zoom in/out (by 30%)                                        |
++--------------------------+---------+-------------------------------------------------------------+
+| | ``h`` ``j`` ``k`` ``l``| --      | move view (by 10%)                                          |
+| | or arrow keys          |         |                                                             |
++--------------------------+---------+-------------------------------------------------------------+
+| ``r``                    | --      | refresh the screen                                          |
++--------------------------+---------+-------------------------------------------------------------+
+| ``q``                    | --      | quit                                                        |
++--------------------------+---------+-------------------------------------------------------------+
+
 
 Limitations
 ===========
@@ -71,3 +84,4 @@ Future plans include:
 
 * Support for more image file types, e.g. ``.gif``
 * Improvement of the edge detection mode
+* Make ``opencv`` dependency optional
