@@ -10,3 +10,6 @@ def main():
     image = vimg.Image(f)
     gui = vimg.GUI(image, mode='optimal')
     gui.main()
+
+if __name__ == '__main__':
+    main()
