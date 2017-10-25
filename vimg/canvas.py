@@ -31,19 +31,26 @@ class GUI:
 
         self.DEFAULT_FG_COLOR = 9
         self.DEFAULT_BG_COLOR = 0
+        self.ZOOM_DELAY = 0.2
 
         curses.noecho()
         curses.cbreak()
         curses.curs_set(0)
         self.WINDOW.keypad(1)
+        curses.mousemask(1)
 
         curses.start_color()
         curses.use_default_colors()
+
+        # self._zoom = 1
+        # self._zoom_center = (self.width / 2.0, self.height / 2.0)
 
         self._fg_color = self.DEFAULT_FG_COLOR
         self._bg_color = self.DEFAULT_BG_COLOR
         self._cursor_x = 0
         self._cursor_y = 0
+
+        self._render_timer = None
 
         self._stdout = ''
 
@@ -60,6 +67,11 @@ class GUI:
         return self.WINDOW.getmaxyx()[1]
 
     @property
+    def shape(self):
+        """ (width,height) of the terminal window. """
+        return (self.width, self.height)
+
+    @property
     def height(self):
         """ Height of the canvas for drawing the image. """
         return self.WINDOW.getmaxyx()[0] - sum(self.OFFSET_Y)
@@ -68,6 +80,14 @@ class GUI:
     def width(self):
         """ Width of the canvas for drawing the image. """
         return self.WINDOW.getmaxyx()[1] - sum(self.OFFSET_X)
+
+    def set_zoom(self,zoom):
+        """ Wrapper function for Image.set_zoom(). """
+        self.image.set_zoom(zoom)
+
+    def get_zoom(self):
+        """ Wrapper function for Image.get_zoom(). """
+        return self.image.get_zoom()
 
     def _write(self, text):
         try:
@@ -125,14 +145,15 @@ class GUI:
     def _print_statusline(self):
         """ Draw the very simple top and bottom statuslines of the GUI. """
         statusline_top = self._print(
-            ('{:%s}'%self.term_width).format(' {} ({}x{}) at {}%'.format(
-                self.image.fname, self.image.o_image.shape[1], self.image.o_image.shape[0], int(100 * self.image.w / self.image.o_image.shape[1])
+            ('{:%s}'%self.term_width).format(' {} ({}x{})'.format(
+                self.image.fname, self.image._image.shape[1], self.image._image.shape[0],
+                # int(100 * self.image.w / self.image._image.shape[1])
             )),
             0,0,
             curses.COLOR_WHITE, 0
         )
         statusline_bottom = self._print(
-            ('{:%s}'%self.term_width).format(' a:ascii  c:color  h:highres  o:optimal  e:edges  r:refresh  q:quit'),
+            ('{:%s}'%self.term_width).format(' A:ascii  C:color  H:highres  O:optimal  E:edges  r:refresh  q:quit  +/-:zoom  hjkl:move'),
             0,self.term_height-1,
             curses.COLOR_WHITE, 0
         )
@@ -142,6 +163,7 @@ class GUI:
         sys.stdout.flush()
 
     def _loading_screen(self):
+        """ Not implemented. """
         pass
 
     def _set_default_colors(self):
@@ -188,12 +210,14 @@ class GUI:
         curses.nocbreak()
         curses.echo()
         curses.curs_set(1)
+        curses.mousemask(0)
         curses.endwin()
 
     def render(self, refresh=True):
         """ Render the image and print to screen. """
-        im = self.image.render(self.width, self.height, mode=self.mode)
+        im = self.image.render(shape=self.shape, mode=self.mode)
         xpos = int((self.width - im.shape[1])/2)
+        ypos = int((self.height - im.shape[0])/2)
         self.clear_buffer()
         self.clear()
 
@@ -202,7 +226,7 @@ class GUI:
                 bg, fg, char = vec
                 bg = int(bg)
                 fg = int(fg)
-                self.printat(char, x+xpos+self.OFFSET_X[0], y+self.OFFSET_Y[0], color=fg, bg=bg)
+                self.printat(char, x+xpos+self.OFFSET_X[0], y+ypos+self.OFFSET_Y[0], color=fg, bg=bg)
 
         if refresh:
             self.refresh()
@@ -213,44 +237,45 @@ class GUI:
 
     def _schedule_render(self,seconds):
         """ Start a timed call to self.render(). """
+        if self._render_timer is not None:
+            self._render_timer.cancel()
         def wrapper():
             self.render()
-        t = Timer(seconds, wrapper)
-        t.start()
-        return t
+            self._render_timer = None
+        self._render_timer = Timer(seconds, wrapper)
+        self._render_timer.start()
+
+    def _screen2pixel(self,x,y):
+        """ Not implemented. """
+        pass
 
     def main(self):
         """ The main loop of the GUI. Handles keyboard input. """
         try:
             self.render(refresh=False)
             key_map = {
-                ord('c') : 'color',
-                ord('h') : 'highres',
-                ord('o') : 'optimal',
-                ord('a') : 'ascii',
-                ord('e') : 'edge'
+                ord('C') : 'color',
+                ord('H') : 'highres',
+                ord('O') : 'optimal',
+                ord('A') : 'ascii',
+                ord('E') : 'edge'
             }
             ##
             ## Pass an initial key press to make sure the program paints the
             ## screen at startup
             ##
             curses.ungetch(ord('r'))
-            t = None
             while True:
                 c = self.getch()
                 if c == curses.KEY_RESIZE:
-                    if t is not None:
-                        t.cancel()
                     ##
                     ## Redrawing in ASCII is fast. Color takes longer, therefore
                     ## user longer interval
                     ##
                     if self.mode == 'ascii':
-                        seconds = 0.3
+                        self._schedule_render(.3)
                     else:
-                        seconds = 1.0
-                    t = self._schedule_render(seconds)
-
+                        self._schedule_render(1.)
                 elif c in key_map:
                     self.mode = key_map[c]
                     self.render()
@@ -258,6 +283,27 @@ class GUI:
                     self.refresh()
                 elif c == ord('s'):
                     self.save()
+                elif c == ord('+'):
+                    self.image.set_zoom(self.get_zoom() * 1.3)
+                    self._schedule_render(self.ZOOM_DELAY)
+                elif c == ord('-'):
+                    self.image.set_zoom(self.get_zoom() / 1.3)
+                    self._schedule_render(self.ZOOM_DELAY)
+                elif c == ord('0'):
+                    self.image.set_zoom(1.0)
+                    self.render()
+                elif c == curses.KEY_DOWN or c == ord('j'):
+                    self.image.move_down()
+                    self._schedule_render(self.ZOOM_DELAY)
+                elif c == curses.KEY_UP or c == ord('k'):
+                    self.image.move_up()
+                    self._schedule_render(self.ZOOM_DELAY)
+                elif c == curses.KEY_LEFT or c == ord('h'):
+                    self.image.move_left()
+                    self._schedule_render(self.ZOOM_DELAY)
+                elif c == curses.KEY_RIGHT or c == ord('l'):
+                    self.image.move_right()
+                    self._schedule_render(self.ZOOM_DELAY)
                 elif c == ord('q'):
                     break
 

@@ -4,6 +4,7 @@
 
 import os
 import sys
+import math
 import cv2
 import numpy as np
 import random
@@ -24,12 +25,15 @@ ASCII_CHARS_SET = [
     (' ',),            # 0
     (u'\u2581', u'\u258F', u'\u2595', u'\u2594'),      # 1/8
     (u'\u2582', u'\u258E', u'\u2596', u'\u2597', u'\u2598', u'\u259D'),      # 1/4
+    # (u'\u2591',), # 1/4
     (u'\u2583', u'\u258D'),      # 3/8
     (u'\u2584', u'\u258C', u'\u2590', u'\u2580', u'\u259A', u'\u259E'),      # 1/2
+    # (u'\u2592',), # 1/2
     (u'\u2585', u'\u258B'),      # 5/8
     (u'\u2586', u'\u258A', u'\u2599', u'\u259B', u'\u259C', u'\u259F'),      # 3/4
+    # (u'\u2593',), # 3/4
     (u'\u2587', u'\u2589'),      # 7/8
-    (u'\u2588')       # 1
+    (u'\u2588',)       # 1
 ]
 
 
@@ -196,7 +200,7 @@ def ratio2char(ratio):
     ## The first char should correspond to 0% foreground coverage.
     ## The last char should correspond to 100% foreground coverage.
     ##
-    index = min(len(ASCII_CHARS_SET) - 1, int((1.0-ratio) * len(ASCII_CHARS_SET)))
+    index = int( np.around( (1.0-ratio) * (len(ASCII_CHARS_SET) - 1) ) )
     charset = ASCII_CHARS_SET[index]
     return random.choice(charset).encode('utf-8')
 
@@ -334,45 +338,216 @@ class Image:
         """
         ## Open image
         self.fname = fname
-        self.o_image = cv2.imread(fname)
-        if self.o_image is None:
+        self._image = cv2.imread(fname)
+        if self._image is None:
             print("'{}' is not a valid image file.".format(fname))
             sys.exit()
 
         ## Properties of the original image
-        self.o_height, self.o_width = self.o_image.shape[:2]
-        self.o_height = int(self.o_height / FONT_ASPECT)
-        self.o_aspect = float(self.o_height) / self.o_width
+        self._height, self._width = self._image.shape[:2]
+        self._aspect = float(self._height) / self._width
 
-        ## View-specific properties
-        self.im = self.o_image
-        self.w = self.o_width
-        self.h = self.o_height
-        self.aspect = self.o_aspect
+        ## Zoom
+        self._zoom = 1
+        self._zoom_x = self._width/2.0
+        self._zoom_y = self._height/2.0
 
-    def resize(self, width, height, preserve_aspect=True):
-        """ Resize the image.
+        ## Canvas properties used to generate the view
+        self._canvas_width = None
+        self._canvas_height = None
+
+
+    def _set_zoom_center(self,center):
+        """ Set the center pixel to be shown in a zoomed view.
 
         Parameters
         ----------
-        width : int
-            The desired width of the resized image.
-        height : int
-            The desired height of the resized image.
-        preserve_aspect : bool, optional
-            Whether to preserve the original aspect ratio.
+        center : tuple(int,int)
+            (x,y) coordinates of original image.
         """
-        aspect = self.o_aspect
-        if float(height)/width > aspect:
-            height = int(aspect * width)
-        else:
-            width = int(height / aspect)
+        x,y = center
+        x = max(0, x)
+        x = min(x, self._width)
+        y = max(0, y)
+        y = min(y, self._height)
+        self._zoom_x = x
+        self._zoom_y = y
 
-        ## Update view
-        self.w = width
-        self.h = height
-        self.aspect = float(self.h) / self.w
-        self.im = cv2.resize(self.o_image, (self.w,self.h))
+    def get_zoom(self):
+        """ Get the current zoom factor.
+
+        Returns
+        -------
+        float
+            The zoom factor.
+        """
+        return self._zoom
+
+    def set_zoom(self,zoom):
+        """ Set the zoom factor.
+
+        Parameters
+        ----------
+        zoom : float
+            The zoom factor.
+        """
+        if zoom < 1.0:
+            zoom = 1.0
+        self._zoom = zoom
+
+    def reset_zoom(self):
+        """ Reset the zoom to show the full image. """
+        self._zoom = 1.0
+        self._zoom_x = self._width/2
+        self._zoom_y = self._height/2
+
+    def move_right(self):
+        """ Adjust the image view by moving the window right 10%. """
+        zoom_step = 0.1 * self._width/self._zoom
+        self._set_zoom_center( (self._zoom_x + zoom_step, self._zoom_y) )
+
+    def move_left(self):
+        """ Adjust the image view by moving the window left 10%. """
+        zoom_step = 0.1 * self._width/self._zoom
+        self._set_zoom_center( (self._zoom_x - zoom_step, self._zoom_y) )
+
+    def move_up(self):
+        """ Adjust the image view by moving the window up 10%. """
+        zoom_step = 0.1 * self._height/self._zoom
+        self._set_zoom_center( (self._zoom_x, self._zoom_y - zoom_step) )
+
+    def move_down(self):
+        """ Adjust the image view by moving the window down 10%. """
+        zoom_step = 0.1 * self._height/self._zoom
+        self._set_zoom_center( (self._zoom_x, self._zoom_y + zoom_step) )
+
+    def _generate_view(self, canvas_shape=None, zoom=None, center=None, splitcell=False, rgb=True):
+        """ Return a resized version of the original image such that it fits within the canvas.
+
+        Parameters
+        ----------
+        canvas_shape : tuple(int,int)
+            (width,height) of the canvas where the image is supposed to be displayed.
+        zoom : int
+            Zoom factor. No zoom means zoom=1.
+        center : tuple(int,int)
+            (x,y) coordinates of the focus of the zoom.
+        splitcell : bool, optional
+            Whether each character cell should be treated as two pixels (default: False).
+        rgb : bool, optional
+            If False, return a grayscale image (default: True).
+
+        Returns
+        -------
+        numpy.array
+            An opencv compatible array representing the image.
+        """
+        ##
+        ## Step 1. Determine the actual width and height of the desired image.
+        ##
+        if canvas_shape is not None:
+            self._canvas_width, self._canvas_height = canvas_shape
+        if zoom is not None:
+            self._zoom = zoom
+        if center is not None:
+            self._set_zoom_center(center)
+
+        ##
+        ## Adjust the width and height to conform with the aspect ratio.
+        ##
+        height = self._canvas_height
+        width = self._canvas_width
+        aspect = self._aspect / FONT_ASPECT
+        if float(self._canvas_height)/self._canvas_width > aspect:
+            height = int(aspect * self._canvas_width)
+        else:
+            width = int(self._canvas_height / aspect)
+
+        ##
+        ## Zoom
+        ##
+        _w = self._width/float(self._zoom)
+        _h = self._height/float(self._zoom)
+        _x1 = int(self._zoom_x - _w/2)
+        _x2 = int(self._zoom_x + _w/2)
+        _y1 = int(self._zoom_y - _h/2)
+        _y2 = int(self._zoom_y + _h/2)
+
+        self._zoom_x = _x1 + _w/2
+        self._zoom_y = _y1 + _h/2
+
+        ##
+        ## Check if the zoom changes the aspect ratio
+        ##
+        # Image pixels per cell:
+        scale_x = (_x2 - _x1) / self._canvas_width
+        scale_y = (_y2 - _y1) / self._canvas_height
+        # Cut-off pixels:
+        cutoff_x = self._width - (_x2 - _x1)
+        cutoff_y = self._height - (_y2 - _y1)
+        # Available space:
+        available_x = self._canvas_width - width
+        available_y = self._canvas_height - height
+
+        if available_x > 0:
+            # Append pixels
+            append_x = min(cutoff_x, available_x * scale_x)
+            _x1 -= int(math.ceil(append_x/2.0))
+            _x2 += int(math.floor(append_x/2.0))
+            # Adjust width
+            width = min(
+                int(width + append_x/scale_x),
+                self._canvas_width
+            )
+        elif available_y > 0:
+            # Append pixels
+            append_y = min(cutoff_y, available_y * scale_y)
+            _y1 -= int(math.ceil(append_y/2.0))
+            _y2 += int(math.floor(append_y/2.0))
+            # Adjust height
+            height = min(
+                int(height + append_y/scale_y),
+                self._canvas_height
+            )
+
+        ##
+        ## Check boundaries
+        ##
+        if _x1 < 0:
+            _x2 -= _x1
+            _x1 = 0
+        if _x2 > self._width:
+            _x1 -= (_x2 - self._width)
+            _x2 = self._width
+        if _y1 < 0:
+            _y2 -= _y1
+            _y1 = 0
+        if _y2 > self._height:
+            _y1 -= (_y2 - self._height)
+            _y2 = self._height
+
+        image = self._image[_y1:_y2,_x1:_x2,:]
+
+        ##
+        ## Account for split character cells
+        ##
+        if splitcell:
+            height *= 2
+
+        ##
+        ## Resize
+        ##
+        image = cv2.resize(image, (width,height))
+
+        ##
+        ## RGB or Grayscale?
+        ##
+        if rgb:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        else:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        return image
 
 
     ########################################################################################
@@ -381,8 +556,7 @@ class Image:
 
     def _to_ascii(self):
         """ Render an ASCII representation of the image. """
-        # Make grayscale
-        gray_image = cv2.cvtColor(self.im, cv2.COLOR_BGR2GRAY)
+        gray_image = self._generate_view(rgb=False)
         # Convert to ASCII
         asciiize = np.vectorize(gray2char)
         chars = asciiize(gray_image)
@@ -392,14 +566,13 @@ class Image:
 
     def _to_color(self):
         """ Render a color-optimized representation of the image. """
-        rgb_image = cv2.cvtColor(self.im, cv2.COLOR_BGR2RGB)
+        rgb_image = self._generate_view()
         result = parallel_apply_along_axis(rgb2color,2,rgb_image)
         return result
 
     def _to_highres(self):
         """ Render a resolution-optimized representation of the image. """
-        img = cv2.resize(self.o_image, (self.w,2*self.h))
-        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        rgb_image = self._generate_view(splitcell=True)
         upper = parallel_apply_along_axis(rgb_closest,2,rgb_image[0::2,:,:])
         lower = parallel_apply_along_axis(rgb_closest,2,rgb_image[1::2,:,:])
 
@@ -412,8 +585,7 @@ class Image:
         """ Render an optimal colored representation of the image.
         This method is a trade-off between _to_color() and _to_highres()
         """
-        img = cv2.resize(self.o_image, (self.w,2*self.h))
-        rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        rgb_image = self._generate_view(splitcell=True)
         upper = rgb_image[0::2,:,:]
         lower = rgb_image[1::2,:,:]
         concat = np.concatenate((upper,lower), axis=2)
@@ -424,7 +596,8 @@ class Image:
         """ (Experimental) Render an edge-detection based representation of the image.
         """
         # Split channels.
-        channels = cv2.split(cv2.cvtColor(self.im, cv2.COLOR_BGR2HSV))
+        image = self._generate_view()
+        channels = cv2.split(cv2.cvtColor(image, cv2.COLOR_BGR2HSV))
         # edges = cv2.Canny(channels[1],200,300)
         edges = cv2.Canny(channels[2],100,250)
         # edges = cv2.Canny(channels[0],300,400) / 255.0 + \
@@ -437,18 +610,18 @@ class Image:
                            [  8,   0,  16],
                            [ 32,  64, 128]])
 
-        edge_chars = [
-            ('-',  [8,16,24,20,28]),
-            ('|',  [2,64,66]),
-            ('\\', [1,128,129,137,145]),
-            ('/',  [4,32,36]),
-            (',',  [127]),
-            ('`',  [3,9,17]),
-            ('\'', [6,12,14]),
-            ('v',  [5,7,88]),
-            ('>',  [33,41,82]),
-            ('<',  [74,132,148]),
-            ('^',  [26,160,224])]
+        # edge_chars = [
+        #     ('-',  [8,16,24,20,28]),
+        #     ('|',  [2,64,66]),
+        #     ('\\', [1,128,129,137,145]),
+        #     ('/',  [4,32,36]),
+        #     (',',  [127]),
+        #     ('`',  [3,9,17]),
+        #     ('\'', [6,12,14]),
+        #     ('v',  [5,7,88]),
+        #     ('>',  [33,41,82]),
+        #     ('<',  [74,132,148]),
+        #     ('^',  [26,160,224])]
 
         edge_chars = [
             (u'\u2500', [8,16,24,20,28]),               # ─
@@ -484,17 +657,17 @@ class Image:
     # Rendering to screen ##################################################################
     ########################################################################################
 
-    def render(self, width=None, height=None, mode='ascii'):
+    def render(self, shape=None, mode='ascii', zoom=None, center=None):
         """ Render a representation of the image with the desired width, height and mode.
 
         Parameters
         ----------
-        width : int, optional
-            The width of the image.
-        height : int, optional
-            The height of the image.
+        shape : tuple(int,int), optional
+            (width,height) of the canvas.
         mode : str
             The image representation mode. One of 'ascii', 'color', 'highres', 'optimal', 'edge'.
+        zoom : float, optional
+            The zoom factor.
 
         Returns
         -------
@@ -502,8 +675,12 @@ class Image:
             A numpy.array object that contains background color, foreground color and character for
             each pixel in the output image.
         """
-        if width is not None or height is not None:
-            self.resize(width,height)
+        if shape is not None:
+            self._canvas_width, self._canvas_height = shape
+        if zoom is not None:
+            self._zoom = zoom
+        if center is not None:
+            self._set_zoom_center(center)
 
         if mode == 'color':
             image = self._to_color()
