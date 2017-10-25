@@ -55,8 +55,8 @@ Once in the GUI, you can change between different viewing modes:
 +--------------------------+---------+-------------------------------------------------------------+
 | ``H``                    | highres | display resolution optimized image                          |
 +--------------------------+---------+-------------------------------------------------------------+
-| ``O``                    | optimal | (default) display an optimal representation of the image.   |
-|                          |         | Trade-off between color accuracy and resolution             |
+| ``O``                    | optimal | | (default) display an optimal representation of the image. |
+|                          |         | | Trade-off between color accuracy and resolution           |
 +--------------------------+---------+-------------------------------------------------------------+
 | ``A``                    | ascii   | display a black-and-white representation of the image       |
 +--------------------------+---------+-------------------------------------------------------------+
