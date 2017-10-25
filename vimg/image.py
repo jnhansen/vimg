@@ -480,8 +480,8 @@ class Image:
         ## Check if the zoom changes the aspect ratio
         ##
         # Image pixels per cell:
-        scale_x = (_x2 - _x1) / self._canvas_width
-        scale_y = (_y2 - _y1) / self._canvas_height
+        scale_x = (_x2 - _x1) / float(self._canvas_width)
+        scale_y = (_y2 - _y1) / float(self._canvas_height)
         # Cut-off pixels:
         cutoff_x = self._width - (_x2 - _x1)
         cutoff_y = self._height - (_y2 - _y1)
