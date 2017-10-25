@@ -145,8 +145,9 @@ class GUI:
     def _print_statusline(self):
         """ Draw the very simple top and bottom statuslines of the GUI. """
         statusline_top = self._print(
-            ('{:%s}'%self.term_width).format(' {} ({}x{})'.format(
+            ('{:%s}'%self.term_width).format(' {} ({}x{}) zoom:{:.1f}x'.format(
                 self.image.fname, self.image._image.shape[1], self.image._image.shape[0],
+                self.image.get_zoom()
                 # int(100 * self.image.w / self.image._image.shape[1])
             )),
             0,0,
