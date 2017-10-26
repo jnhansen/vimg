@@ -9,6 +9,12 @@ import cv2
 import numpy as np
 import random
 import multiprocessing as mp
+import scipy.ndimage
+
+##
+## Use multiprocessing?
+##
+MP_FLAG = True
 
 ##
 ## FONT_ASPECT is the height-to-width ratio of a character slot in the terminal.
@@ -18,9 +24,16 @@ FONT_ASPECT = 30./14
 ## CHANNEL_VALUES are the values that each RGB channel can take in the set of xterm-256 colors.
 ##
 CHANNEL_VALUES = np.array((0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff))
-# ASCII_CHARS = np.asarray(list(' .,:-=+*#%@'))
-# ASCII_CHARS = np.asarray(list(' .,:-~=+*m8X#%&@'))
-# ASCII_CHARS = np.asarray(list(' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$'))
+##
+## Create grayscale lookup dictionaries
+##
+GRAYSCALE_VALUES = np.array([0x08, 0x12, 0x1c, 0x26, 0x30, 0x3a, 0x44, 0x4e, 0x58, 0x62, 0x6c, 0x76, 0x80, 0x8a, 0x94, 0x9e, 0xa8, 0xb2, 0xbc, 0xc6, 0xd0, 0xda, 0xe4, 0xee])
+GRAYSCALE_INT = np.array([232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255])
+GRAYSCALE_LOOKUP = dict(zip(GRAYSCALE_VALUES,GRAYSCALE_INT))
+GRAYSCALE_REVERSE_LOOKUP = dict(zip(GRAYSCALE_INT,GRAYSCALE_VALUES))
+##
+## Characters used to mix two colors at a given ratio
+##
 ASCII_CHARS_SET = [
     (' ',),            # 0
     (u'\u2581', u'\u258F', u'\u2595', u'\u2594'),      # 1/8
@@ -35,7 +48,59 @@ ASCII_CHARS_SET = [
     (u'\u2587', u'\u2589'),      # 7/8
     (u'\u2588',)       # 1
 ]
+##
+## Characters to represent pixels
+##
+CELLSIZE = (8,4)        # rows,columns
+CHAR_TEMPLATES = [
+    # (character, mask)
+    # ('▀', np.transpose([[1,0]])),         # Upper half block
+    ('▁', np.transpose([[0,0,0,0,0,0,0,1]])),         # Lower one eighth block
+    ('▂', np.transpose([[0,0,0,1]])),         # Lower one quarter block
+    ('▃', np.transpose([[0,0,0,0,0,1,1,1]])),         # Lower three eighths block
+    ('▄', np.transpose([[0,1]])),         # Lower half block
+    ('▅', np.transpose([[0,0,0,1,1,1,1,1]])),         # Lower five eighths block
+    ('▆', np.transpose([[0,1,1,1]])),         # Lower three quarters block
+    ('▇', np.transpose([[0,1,1,1,1,1,1,1]])),         # Lower seven eighths block
+    # # ('█', np.array([[1]])),       # Full block
+    ('▉', np.array([[1,1,1,1,1,1,1,0]])),         # Left seven eighths block
+    ('▊', np.array([[1,1,1,0]])),       # Left three quarters block
+    ('▋', np.array([[1,1,1,1,1,0,0,0]])),         # Left five eighths block
+    ('▌', np.array([[1,0]])),         # Left half block
+    ('▍', np.array([[1,1,1,0,0,0,0,0]])),         # Left three eighths block
+    ('▎', np.array([[1,0,0,0]])),         # Left one quarter block
+    ('▏', np.array([[1,0,0,0,0,0,0,0]])),         # Left one eighth block
+    # ('▐', np.array([[0,1]])),         # Right half block
+    # ('▔', np.transpose([[1,0,0,0,0,0,0,0]])),         # Upper one eighth block
+    # ('▕', np.array([[0,0,0,0,0,0,0,1]])),         # Right one eighth block
+    ('▖', np.array([[0,0],[1,0]])),       # Quadrant lower left
+    ('▗', np.array([[0,0],[0,1]])),       # Quadrant lower right
+    ('▘', np.array([[1,0],[0,0]])),       # Quadrant upper left
+    ('▝', np.array([[0,1],[0,0]])),       # Quadrant upper right
+    # ('▙', np.array([[1,0],[1,1]])),       # Quadrant upper left and lower left and lower right
+    # ('▛', np.array([[1,1],[1,0]])),       # Quadrant upper left and upper right and lower left
+    # ('▜', np.array([[1,1],[0,1]])),       # Quadrant upper left and upper right and lower right
+    # ('▟', np.array([[0,1],[1,1]])),       # Quadrant upper right and lower left and lower right
+    ('▞', np.array([[0,1],[1,0]])),       # Quadrant upper right and lower left
+    # ('▚', np.array([[1,0],[0,1]])),       # Quadrant upper left and lower right
+]
 
+##
+## Create masks with CELLSIZE shape
+##
+CHARS = []
+for (c,mask) in CHAR_TEMPLATES:
+    ##
+    ## Skip characters where the resolution doesn't match the cellsize:
+    ##
+    if not (CELLSIZE[0] % mask.shape[0] == 0) or not (CELLSIZE[1] % mask.shape[1] == 0):
+        continue
+
+    ratio = mask.sum() / mask.size
+    zoom = np.array(CELLSIZE) / mask.shape
+    mask = scipy.ndimage.zoom(mask, zoom, order=0)
+    mask = np.stack([mask,mask,mask],axis=-1).astype(bool)
+    CHARS.append((c,ratio,mask))
 
 ##
 ## COLOR CONVERSION HELPERS
@@ -55,38 +120,15 @@ def rgb_bracket(rgb):
         A tuple of the integer representations of two xterm-256 compatible colors and the mixing ratio
         that yields the best approximation to the given color.
     """
-    color_1 = []
-    color_2 = []
-    ratios = []
-    for channel in rgb:
-        # Smaller
-        diff = CHANNEL_VALUES - channel
-        diff[diff<0] = 255
-        s = CHANNEL_VALUES[diff.argmin()]
-        # Bigger
-        diff = channel - CHANNEL_VALUES
-        diff[diff<0] = 255
-        b = CHANNEL_VALUES[diff.argmin()]
-        # Mixing ratio
-        if s == b:
-            r = 1
-        else:
-            r = float(channel - b) / (s - b)
-        if r > 0.5:
-            color_1.append(s)
-            color_2.append(b)
-            ratios.append(r)
-        else:
-            color_1.append(b)
-            color_2.append(s)
-            ratios.append(1-r)
-
-    ##
-    ## Compute optimal mixing ratio
-    ##
-    color_1_int = rgb_lookup(color_1)
-    color_2_int = rgb_lookup(color_2)
-    return color_1_int, color_2_int, np.mean(ratios)
+    rgb1 = rgb_closest(rgb, asint=False)
+    rgb2 = rgb_closest(2*np.array(rgb) - rgb1, asint=False)
+    d1 = colordiff(rgb,rgb1)
+    d2 = colordiff(rgb,rgb2)
+    if d1==0 and d2==0:
+        ratio = 1.0
+    else:
+        ratio = d2 / (d1+d2)
+    return rgb_lookup(rgb1), rgb_lookup(rgb2), ratio
 
 def rgb_closest(rgb,asint=True):
     """ Find the closest available xterm-256 approximation to the RGB color.
@@ -108,6 +150,16 @@ def rgb_closest(rgb,asint=True):
     for channel in rgb:
         diff = abs(CHANNEL_VALUES - channel)
         xterm_color.append(CHANNEL_VALUES[diff.argmin()])
+    ##
+    ## Consider grayscale
+    ##
+    mindiff = colordiff(rgb,xterm_color)
+    rgb_mean = np.mean(rgb)
+    graydiff = abs(GRAYSCALE_VALUES - rgb_mean)
+    gray = GRAYSCALE_VALUES[graydiff.argmin()]
+    rgb_gray = (gray,gray,gray)
+    if colordiff(rgb,rgb_gray) < mindiff:
+        xterm_color = rgb_gray
     if asint:
         return rgb_lookup(xterm_color)
     else:
@@ -126,6 +178,9 @@ def rgb_reverse_lookup(index):
     numpy.array
         A numpy.array object of length 3 with the RGB values.
     """
+    if index in GRAYSCALE_REVERSE_LOOKUP:
+        gray = GRAYSCALE_REVERSE_LOOKUP[index]
+        return (gray,gray,gray)
     index -= 16
     remainder1 = index % 36
     remainder2 = remainder1 % 6
@@ -149,6 +204,8 @@ def rgb_lookup(rgb):
     int
         The xterm-256 integer representing the color, or False if the color doesn't exist.
     """
+    if rgb[0]==rgb[1] and rgb[0]==rgb[2] and rgb[0] in GRAYSCALE_LOOKUP:
+        return GRAYSCALE_LOOKUP[rgb[0]]
     pos=[]
     for channel in rgb:
         found = False
@@ -242,6 +299,91 @@ def colordiff(rgb1,rgb2):
     r1,g1,b1=rgb1
     r2,g2,b2=rgb2
     return np.sqrt((float(r1)-float(r2))**2 + (float(g1)-float(g2))**2 + (float(b1)-float(b2))**2)
+
+def pixels2cell(pixels):
+    """ Convert an 8x8 pixel array to the best possible representation by a character, background
+    and foregrund color.
+
+    Parameters
+    ----------
+    pixels : numpy.array
+        numpy.array of shape (8,8,3) representing 8x8 RGB pixels
+
+    Returns
+    -------
+    tuple(int,int,char)
+        The optimal background color, foreground color and character to represent the two pixels in
+        a single character cell.
+    """
+    if not pixels.shape == CELLSIZE + (3,):
+        pixels = pixels.reshape( CELLSIZE + (3,) )
+
+    ##
+    ## Compute the contrast between
+    ##
+    char = ' '
+    bg_color_rgb = None
+    fg_color_rgb = None
+    bg_color_approx = None
+    fg_color_approx = None
+    max_contrast = -1
+
+
+    if pixels[:,:,0].var() == 0 and pixels[:,:,1].var() == 0 and pixels[:,:,2].var() == 0:
+        ##
+        ## All pixels are equal --> no need to loop through masks
+        ##
+        max_contrast = 0
+        bg_color_rgb = fg_color_rgb = pixels.mean(axis=0).mean(axis=0).astype(int)
+        bg_color_approx = fg_color_approx = rgb_closest(bg_color_rgb,asint=False)
+    else:
+        ##
+        ## Choose mask with best inter-pixel contrast
+        ##
+        for (c,r,mask) in CHARS:
+            ##
+            ## Compute mask-specific color contrast
+            ##
+            m = mask[:,:,0]
+            rgb1 = pixels[~m].mean(axis=0)
+            rgb2 = pixels[m].mean(axis=0)
+            contrast = colordiff(rgb1,rgb2)
+            if contrast > max_contrast:
+                max_contrast = contrast
+                char = c
+                bg_color_rgb = rgb1
+                fg_color_rgb = rgb2
+
+        bg_color_approx = rgb_closest(bg_color_rgb,asint=False)
+        fg_color_approx = rgb_closest(fg_color_rgb,asint=False)
+
+    if ( colordiff(bg_color_rgb,bg_color_approx) < 10 and colordiff(fg_color_rgb,fg_color_approx) < 10 ) \
+        or max_contrast > 30:
+        ##
+        ## If the two cell part colors sufficiently accurate OR
+        ## very different from each other, display them as different pixels.
+        ##
+        fg_color = rgb_lookup(fg_color_approx)
+        bg_color = rgb_lookup(bg_color_approx)
+
+    else:
+        ##
+        ## Else, try to improve color accuracy by mixing colors.
+        ##
+        rgb = pixels.mean(axis=0).mean(axis=0).astype(int)
+        # rgb = (0.5 * (r*np.array(fg_color_rgb) + (1-r)*np.array(bg_color_rgb))).astype(int)
+        bg_color, fg_color, ratio = rgb_bracket(rgb)
+        char = ratio2char(ratio).decode('utf-8')
+
+    # if max_contrast == 0:
+    #     rgb = pixels.mean(axis=0).mean(axis=0)
+    #     fg_color = bg_color = rgb_closest(rgb)
+    # else:
+    #     fg_color = rgb_lookup(fg_color_approx)
+    #     bg_color = rgb_lookup(bg_color_approx)
+
+    return bg_color, fg_color, char
+
 
 def best_representation(values):
     """ Given two RGB colors as an RGBRGB 6-tuple, representing two vertically adjacent pixels,
@@ -421,7 +563,7 @@ class Image:
         zoom_step = 0.1 * self._height/self._zoom
         self._set_zoom_center( (self._zoom_x, self._zoom_y + zoom_step) )
 
-    def _generate_view(self, canvas_shape=None, zoom=None, center=None, splitcell=False, rgb=True):
+    def _generate_view(self, canvas_shape=None, zoom=None, center=None, splitcell=False, cellsize=None, rgb=True):
         """ Return a resized version of the original image such that it fits within the canvas.
 
         Parameters
@@ -434,6 +576,8 @@ class Image:
             (x,y) coordinates of the focus of the zoom.
         splitcell : bool, optional
             Whether each character cell should be treated as two pixels (default: False).
+        cellsize : tuple(int,int)
+            (height,width) Number of pixels per cell.
         rgb : bool, optional
             If False, return a grayscale image (default: True).
 
@@ -459,9 +603,9 @@ class Image:
         width = self._canvas_width
         aspect = self._aspect / FONT_ASPECT
         if float(self._canvas_height)/self._canvas_width > aspect:
-            height = int(aspect * self._canvas_width)
+            height = int(np.around(aspect * self._canvas_width))
         else:
-            width = int(self._canvas_height / aspect)
+            width = int(np.around(self._canvas_height / aspect))
 
         ##
         ## Zoom
@@ -534,6 +678,10 @@ class Image:
         if splitcell:
             height *= 2
 
+        if cellsize is not None:
+            width *= cellsize[1]
+            height *= cellsize[0]
+
         ##
         ## Resize
         ##
@@ -555,7 +703,7 @@ class Image:
     ########################################################################################
 
     def _to_ascii(self):
-        """ Render an ASCII representation of the image. """
+        """ (deprecated) Render an ASCII representation of the image. """
         gray_image = self._generate_view(rgb=False)
         # Convert to ASCII
         asciiize = np.vectorize(gray2char)
@@ -564,24 +712,22 @@ class Image:
         color_white = np.ones(chars.shape, dtype=np.uint8) * 231
         return np.stack([color_black,color_white,chars],axis=-1)
 
-    def _to_color(self):
-        """ Render a color-optimized representation of the image. """
-        rgb_image = self._generate_view()
-        result = parallel_apply_along_axis(rgb2color,2,rgb_image)
-        return result
-
     def _to_highres(self):
-        """ Render a resolution-optimized representation of the image. """
+        """ (deprecated) Render a resolution-optimized representation of the image. """
         rgb_image = self._generate_view(splitcell=True)
-        upper = parallel_apply_along_axis(rgb_closest,2,rgb_image[0::2,:,:])
-        lower = parallel_apply_along_axis(rgb_closest,2,rgb_image[1::2,:,:])
+        if MP_FLAG:
+            upper = parallel_apply_along_axis(rgb_closest,2,rgb_image[0::2,:,:])
+            lower = parallel_apply_along_axis(rgb_closest,2,rgb_image[1::2,:,:])
+        else:
+            upper = np.apply_along_axis(rgb_closest,2,rgb_image[0::2,:,:])
+            lower = np.apply_along_axis(rgb_closest,2,rgb_image[1::2,:,:])
 
         chars = np.chararray(upper.shape, unicode=True)
         chars[:] = u'\u2584'
         chars = chars.encode('utf-8')
         return np.stack([upper,lower,chars],axis=-1)
 
-    def _to_optimal(self):
+    def _to_fast_color(self):
         """ Render an optimal colored representation of the image.
         This method is a trade-off between _to_color() and _to_highres()
         """
@@ -589,7 +735,27 @@ class Image:
         upper = rgb_image[0::2,:,:]
         lower = rgb_image[1::2,:,:]
         concat = np.concatenate((upper,lower), axis=2)
-        result = parallel_apply_along_axis(best_representation,2,concat)
+        if MP_FLAG:
+            result = parallel_apply_along_axis(best_representation,2,concat)
+        else:
+            result = np.apply_along_axis(best_representation,2,concat)
+        return result
+
+    def _to_color(self):
+        """ Render an optimal colored representation of the image. """
+        rgb_image = self._generate_view(cellsize=CELLSIZE)
+        h,w,_ = rgb_image.shape
+        cells = np.array(np.split(
+            np.array(np.split(
+                rgb_image, int(w/CELLSIZE[1]), axis=1
+            )), int(h/CELLSIZE[0]), axis=1
+        ))
+        cells = cells.reshape(cells.shape[0], cells.shape[1], CELLSIZE[0]*CELLSIZE[1]*3)
+        # cells = rgb_image.reshape((w,h,)).reshape((int(w/8),int(h/8),192))
+        if MP_FLAG:
+            result = parallel_apply_along_axis(pixels2cell,2,cells)
+        else:
+            result = np.apply_along_axis(pixels2cell,2,cells)
         return result
 
     def _to_edges(self):
@@ -684,10 +850,10 @@ class Image:
 
         if mode == 'color':
             image = self._to_color()
+        if mode == 'fast':
+            image = self._to_fast_color()
         if mode == 'highres':
             image = self._to_highres()
-        if mode == 'optimal':
-            image = self._to_optimal()
         elif mode == 'ascii':
             image = self._to_ascii()
         elif mode == 'edge':

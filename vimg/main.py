@@ -8,7 +8,7 @@ def main():
         sys.exit()
     f = os.path.expanduser(sys.argv[1])
     image = vimg.Image(f)
-    gui = vimg.GUI(image, mode='optimal')
+    gui = vimg.GUI(image, mode='color')
     gui.main()
 
 if __name__ == '__main__':

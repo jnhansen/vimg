@@ -42,9 +42,6 @@ class GUI:
         curses.start_color()
         curses.use_default_colors()
 
-        # self._zoom = 1
-        # self._zoom_center = (self.width / 2.0, self.height / 2.0)
-
         self._fg_color = self.DEFAULT_FG_COLOR
         self._bg_color = self.DEFAULT_BG_COLOR
         self._cursor_x = 0
@@ -154,7 +151,7 @@ class GUI:
             curses.COLOR_WHITE, 0
         )
         statusline_bottom = self._print(
-            ('{:%s}'%self.term_width).format(' A:ascii  C:color  H:highres  O:optimal  E:edges  r:refresh  q:quit  +/-:zoom  hjkl:move'),
+            ('{:%s}'%self.term_width).format(' c:color  e:edges  r:refresh  q:quit  +/-:zoom  hjkl:move'),
             0,self.term_height-1,
             curses.COLOR_WHITE, 0
         )
@@ -255,11 +252,10 @@ class GUI:
         try:
             self.render(refresh=False)
             key_map = {
-                ord('C') : 'color',
-                ord('H') : 'highres',
-                ord('O') : 'optimal',
-                ord('A') : 'ascii',
-                ord('E') : 'edge'
+                ord('a') : 'ascii',
+                ord('c') : 'color',
+                ord('f') : 'fast',
+                ord('e') : 'edge',
             }
             ##
             ## Pass an initial key press to make sure the program paints the

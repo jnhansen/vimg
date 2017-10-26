@@ -14,10 +14,10 @@ The image is rendered using a combination of background color, foreground color 
 for each character cell to optimally represent the original pixels. The challenge is the limited
 color palette of 256 colors.
 
-In the simplest case, each character cell represents one pixel. However, the resolution can be doubled
-by printing a half-block character in a different color in that character cell.
-Alternatively, the color accuracy can be improved by mixing two available colors in foreground and background,
-thus losing the gained resolution.
+In the simplest case, each character cell represents one pixel. However, the resolution can be
+increased by printing unicode characters that better capture the structure of the image.
+Alternatively, the color accuracy can be improved by mixing two available colors in foreground and
+background, thus losing the gained resolution.
 
 The default mode attempts to optimize the rendering by optimizing resolution in areas of high
 detail, and optimizing color accuracy in areas of low detail.
@@ -33,7 +33,7 @@ Requirements
 ------------
 A terminal that supports 256 colors.
 
-The script is based on ``curses`` and ``opencv`` for Python. Make sure you have those installed.
+The script is based on ``curses`` and ``opencv`` for Python.
 
 Usage
 =====
@@ -42,30 +42,27 @@ Usage
     $ vimg path/to/image
 
 
-
 GUI modes
 =========
 Once in the GUI, you can change between different viewing modes:
 
-
 +--------------------------+---------+-------------------------------------------------------------+
 | Key shortcut             |  Mode   |  Description                                                |
 +==========================+=========+=============================================================+
-| ``C``                    | color   | display color-optimized image                               |
+| ``c``                    | color   | (default) display optimal representation of image           |
 +--------------------------+---------+-------------------------------------------------------------+
-| ``H``                    | highres | display resolution optimized image                          |
+| ``f``                    | fast    | display image in fast mode (reduced resolution)             |
 +--------------------------+---------+-------------------------------------------------------------+
-| ``O``                    | optimal | | (default) display an optimal representation of the image. |
-|                          |         | | Trade-off between color accuracy and resolution           |
+| ``a``                    | ascii   | display a black-and-white representation of the image       |
 +--------------------------+---------+-------------------------------------------------------------+
-| ``A``                    | ascii   | display a black-and-white representation of the image       |
-+--------------------------+---------+-------------------------------------------------------------+
-| ``E``                    | edge    | (experimental) edge detection based rendering               |
+| ``e``                    | edge    | (experimental) edge detection based rendering               |
 +--------------------------+---------+-------------------------------------------------------------+
 | ``+``/``-``              | --      | zoom in/out (by 30%)                                        |
 +--------------------------+---------+-------------------------------------------------------------+
 | | ``h`` ``j`` ``k`` ``l``| --      | move view (by 10%)                                          |
 | | or arrow keys          |         |                                                             |
++--------------------------+---------+-------------------------------------------------------------+
+| ``0``                    | --      | reset zoom                                                  |
 +--------------------------+---------+-------------------------------------------------------------+
 | ``r``                    | --      | refresh the screen                                          |
 +--------------------------+---------+-------------------------------------------------------------+
@@ -73,9 +70,15 @@ Once in the GUI, you can change between different viewing modes:
 +--------------------------+---------+-------------------------------------------------------------+
 
 
+Notes
+=====
+The results will be better if you use a font that correctly displays unicode block element characters
+with the full line height, such as DejaVu Sans.
+
 Limitations
 ===========
-The script currently only supports image files that are natively supported by OpenCV (``.jpg``, ``.png``, ``.bmp``).
+The script currently only supports image files that are natively supported by OpenCV (``.jpg``,
+``.png``, ``.bmp``).
 
 
 To Do
@@ -85,3 +88,4 @@ Future plans include:
 * Support for more image file types, e.g. ``.gif``
 * Improvement of the edge detection mode
 * Make ``opencv`` dependency optional
+* Improve color gradients at contrast-rich edges
