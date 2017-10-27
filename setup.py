@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='vimg',
-      version='0.4.0',
+      version='0.4.1',
       description='An image viewer for the command line',
       long_description=readme(),
       keywords='cli terminal console image picture graphics viewer preview',

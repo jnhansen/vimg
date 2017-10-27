@@ -1,3 +1,4 @@
+# coding=utf-8
 import sys
 import curses
 from threading import Timer
@@ -131,8 +132,8 @@ class GUI:
             self._bg_color = bg
 
         fmt = cursor + fg_color + bg_color
-        if PY2 or not isinstance(text, str):
-            text = text.decode('utf-8')
+        # if PY2 or not isinstance(text, str):
+        #     text = text.decode('utf-8')
         return fmt + text
 
     def printat(self, *args, **kwargs):
@@ -256,6 +257,7 @@ class GUI:
                 ord('c') : 'color',
                 ord('f') : 'fast',
                 ord('e') : 'edge',
+                ord('H') : 'highres',
             }
             ##
             ## Pass an initial key press to make sure the program paints the

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # coding=utf-8
 """ An image viewer for the command line. """
 
@@ -11,10 +10,12 @@ import random
 import multiprocessing as mp
 import scipy.ndimage
 
+PY2 = sys.version_info < (3,0)
+
 ##
 ## Use multiprocessing?
 ##
-MP_FLAG = True
+FLAG_MP = False
 
 ##
 ## FONT_ASPECT is the height-to-width ratio of a character slot in the terminal.
@@ -35,7 +36,7 @@ GRAYSCALE_REVERSE_LOOKUP = dict(zip(GRAYSCALE_INT,GRAYSCALE_VALUES))
 ## Characters used to mix two colors at a given ratio
 ##
 ASCII_CHARS_SET = [
-    (' ',),            # 0
+    (u' ',),            # 0
     (u'\u2581', u'\u258F', u'\u2595', u'\u2594'),      # 1/8
     (u'\u2582', u'\u258E', u'\u2596', u'\u2597', u'\u2598', u'\u259D'),      # 1/4
     # (u'\u2591',), # 1/4
@@ -54,35 +55,35 @@ ASCII_CHARS_SET = [
 CELLSIZE = (8,4)        # rows,columns
 CHAR_TEMPLATES = [
     # (character, mask)
-    # ('▀', np.transpose([[1,0]])),         # Upper half block
-    ('▁', np.transpose([[0,0,0,0,0,0,0,1]])),         # Lower one eighth block
-    ('▂', np.transpose([[0,0,0,1]])),         # Lower one quarter block
-    ('▃', np.transpose([[0,0,0,0,0,1,1,1]])),         # Lower three eighths block
-    ('▄', np.transpose([[0,1]])),         # Lower half block
-    ('▅', np.transpose([[0,0,0,1,1,1,1,1]])),         # Lower five eighths block
-    ('▆', np.transpose([[0,1,1,1]])),         # Lower three quarters block
-    ('▇', np.transpose([[0,1,1,1,1,1,1,1]])),         # Lower seven eighths block
-    # # ('█', np.array([[1]])),       # Full block
-    ('▉', np.array([[1,1,1,1,1,1,1,0]])),         # Left seven eighths block
-    ('▊', np.array([[1,1,1,0]])),       # Left three quarters block
-    ('▋', np.array([[1,1,1,1,1,0,0,0]])),         # Left five eighths block
-    ('▌', np.array([[1,0]])),         # Left half block
-    ('▍', np.array([[1,1,1,0,0,0,0,0]])),         # Left three eighths block
-    ('▎', np.array([[1,0,0,0]])),         # Left one quarter block
-    ('▏', np.array([[1,0,0,0,0,0,0,0]])),         # Left one eighth block
-    # ('▐', np.array([[0,1]])),         # Right half block
-    # ('▔', np.transpose([[1,0,0,0,0,0,0,0]])),         # Upper one eighth block
-    # ('▕', np.array([[0,0,0,0,0,0,0,1]])),         # Right one eighth block
-    ('▖', np.array([[0,0],[1,0]])),       # Quadrant lower left
-    ('▗', np.array([[0,0],[0,1]])),       # Quadrant lower right
-    ('▘', np.array([[1,0],[0,0]])),       # Quadrant upper left
-    ('▝', np.array([[0,1],[0,0]])),       # Quadrant upper right
-    # ('▙', np.array([[1,0],[1,1]])),       # Quadrant upper left and lower left and lower right
-    # ('▛', np.array([[1,1],[1,0]])),       # Quadrant upper left and upper right and lower left
-    # ('▜', np.array([[1,1],[0,1]])),       # Quadrant upper left and upper right and lower right
-    # ('▟', np.array([[0,1],[1,1]])),       # Quadrant upper right and lower left and lower right
-    ('▞', np.array([[0,1],[1,0]])),       # Quadrant upper right and lower left
-    # ('▚', np.array([[1,0],[0,1]])),       # Quadrant upper left and lower right
+    # (u'▀', np.transpose([[1,0]])),         # Upper half block
+    (u'▁', np.transpose([[0,0,0,0,0,0,0,1]])),         # Lower one eighth block
+    (u'▂', np.transpose([[0,0,0,1]])),         # Lower one quarter block
+    (u'▃', np.transpose([[0,0,0,0,0,1,1,1]])),         # Lower three eighths block
+    (u'▄', np.transpose([[0,1]])),         # Lower half block
+    (u'▅', np.transpose([[0,0,0,1,1,1,1,1]])),         # Lower five eighths block
+    (u'▆', np.transpose([[0,1,1,1]])),         # Lower three quarters block
+    (u'▇', np.transpose([[0,1,1,1,1,1,1,1]])),         # Lower seven eighths block
+    # # (u'█', np.array([[1]])),       # Full block
+    (u'▉', np.array([[1,1,1,1,1,1,1,0]])),         # Left seven eighths block
+    (u'▊', np.array([[1,1,1,0]])),       # Left three quarters block
+    (u'▋', np.array([[1,1,1,1,1,0,0,0]])),         # Left five eighths block
+    (u'▌', np.array([[1,0]])),         # Left half block
+    (u'▍', np.array([[1,1,1,0,0,0,0,0]])),         # Left three eighths block
+    (u'▎', np.array([[1,0,0,0]])),         # Left one quarter block
+    (u'▏', np.array([[1,0,0,0,0,0,0,0]])),         # Left one eighth block
+    # (u'▐', np.array([[0,1]])),         # Right half block
+    # (u'▔', np.transpose([[1,0,0,0,0,0,0,0]])),         # Upper one eighth block
+    # (u'▕', np.array([[0,0,0,0,0,0,0,1]])),         # Right one eighth block
+    (u'▖', np.array([[0,0],[1,0]])),       # Quadrant lower left
+    (u'▗', np.array([[0,0],[0,1]])),       # Quadrant lower right
+    (u'▘', np.array([[1,0],[0,0]])),       # Quadrant upper left
+    (u'▝', np.array([[0,1],[0,0]])),       # Quadrant upper right
+    # (u'▙', np.array([[1,0],[1,1]])),       # Quadrant upper left and lower left and lower right
+    # (u'▛', np.array([[1,1],[1,0]])),       # Quadrant upper left and upper right and lower left
+    # (u'▜', np.array([[1,1],[0,1]])),       # Quadrant upper left and upper right and lower right
+    # (u'▟', np.array([[0,1],[1,1]])),       # Quadrant upper right and lower left and lower right
+    (u'▞', np.array([[0,1],[1,0]])),       # Quadrant upper right and lower left
+    # (u'▚', np.array([[1,0],[0,1]])),       # Quadrant upper left and lower right
 ]
 
 ##
@@ -259,7 +260,8 @@ def ratio2char(ratio):
     ##
     index = int( np.around( (1.0-ratio) * (len(ASCII_CHARS_SET) - 1) ) )
     charset = ASCII_CHARS_SET[index]
-    return random.choice(charset).encode('utf-8')
+    char = random.choice(charset)
+    return char
 
 def gray2char(gray):
     """ Like ratio2char, but expects an integer value between 0 and 255. Maps a character representing
@@ -279,7 +281,8 @@ def gray2char(gray):
         gray = gray/256.0
     index = min(len(ASCII_CHARS_SET) - 1, int(gray * len(ASCII_CHARS_SET)))
     charset = ASCII_CHARS_SET[index]
-    return random.choice(charset).encode('utf-8')
+    char = random.choice(charset)
+    return char
 
 def colordiff(rgb1,rgb2):
     """ Computes the Euclidean difference between two RGB color tuples.
@@ -321,7 +324,7 @@ def pixels2cell(pixels):
     ##
     ## Compute the contrast between
     ##
-    char = ' '
+    char = u' '
     bg_color_rgb = None
     fg_color_rgb = None
     bg_color_approx = None
@@ -345,6 +348,11 @@ def pixels2cell(pixels):
             ## Compute mask-specific color contrast
             ##
             m = mask[:,:,0]
+            ##
+            ## If r < 0.5 (the printable character is small),
+            ## favor colors away from the character for the background.
+            ##
+            # ...
             rgb1 = pixels[~m].mean(axis=0)
             rgb2 = pixels[m].mean(axis=0)
             contrast = colordiff(rgb1,rgb2)
@@ -373,14 +381,7 @@ def pixels2cell(pixels):
         rgb = pixels.mean(axis=0).mean(axis=0).astype(int)
         # rgb = (0.5 * (r*np.array(fg_color_rgb) + (1-r)*np.array(bg_color_rgb))).astype(int)
         bg_color, fg_color, ratio = rgb_bracket(rgb)
-        char = ratio2char(ratio).decode('utf-8')
-
-    # if max_contrast == 0:
-    #     rgb = pixels.mean(axis=0).mean(axis=0)
-    #     fg_color = bg_color = rgb_closest(rgb)
-    # else:
-    #     fg_color = rgb_lookup(fg_color_approx)
-    #     bg_color = rgb_lookup(bg_color_approx)
+        char = ratio2char(ratio)
 
     return bg_color, fg_color, char
 
@@ -415,7 +416,7 @@ def best_representation(values):
         ##
         bg_color = rgb_lookup(upper_main_color)
         fg_color = rgb_lookup(lower_main_color)
-        char = u'\u2584'.encode('utf-8')
+        char = u'\u2584'
     else:
         ##
         ## Else, try to improve color accuracy by mixing colors.
@@ -715,7 +716,7 @@ class Image:
     def _to_highres(self):
         """ (deprecated) Render a resolution-optimized representation of the image. """
         rgb_image = self._generate_view(splitcell=True)
-        if MP_FLAG:
+        if FLAG_MP:
             upper = parallel_apply_along_axis(rgb_closest,2,rgb_image[0::2,:,:])
             lower = parallel_apply_along_axis(rgb_closest,2,rgb_image[1::2,:,:])
         else:
@@ -724,7 +725,6 @@ class Image:
 
         chars = np.chararray(upper.shape, unicode=True)
         chars[:] = u'\u2584'
-        chars = chars.encode('utf-8')
         return np.stack([upper,lower,chars],axis=-1)
 
     def _to_fast_color(self):
@@ -735,7 +735,7 @@ class Image:
         upper = rgb_image[0::2,:,:]
         lower = rgb_image[1::2,:,:]
         concat = np.concatenate((upper,lower), axis=2)
-        if MP_FLAG:
+        if FLAG_MP:
             result = parallel_apply_along_axis(best_representation,2,concat)
         else:
             result = np.apply_along_axis(best_representation,2,concat)
@@ -752,7 +752,7 @@ class Image:
         ))
         cells = cells.reshape(cells.shape[0], cells.shape[1], CELLSIZE[0]*CELLSIZE[1]*3)
         # cells = rgb_image.reshape((w,h,)).reshape((int(w/8),int(h/8),192))
-        if MP_FLAG:
+        if FLAG_MP:
             result = parallel_apply_along_axis(pixels2cell,2,cells)
         else:
             result = np.apply_along_axis(pixels2cell,2,cells)
@@ -798,23 +798,23 @@ class Image:
             (u'\u2510', [72,136]),                      # ┐
             (u'\u2514', [18,17]),                       # └
             (u'\u2518', [10,12]),                       # ┘
-            ('/',       [68,84,34,42]),                 # /
+            (u'/',      [68,84,34,42]),                 # /
 
-            ('v',       [5,7,88]),
-            ('>',       [33,41,82]),
-            ('<',       [74,132,148]),
-            ('^',       [26,160,224]),
+            (u'v',      [5,7,88]),
+            (u'>',      [33,41,82]),
+            (u'<',      [74,132,148]),
+            (u'^',      [26,160,224]),
         ]
 
         def assign_edge_char(value):
             for c, vals in edge_chars:
                 if value in vals:
-                    return c.encode('utf-8')
-            return 'o'.encode('utf-8')
+                    return c
+            return u'o'
         edgize = np.vectorize(assign_edge_char)
         dst = cv2.filter2D(edges,-1,kernel)
         edged = edgize(dst)
-        edged[edges==0] = ' '
+        edged[edges==0] = u' '
         color_black = np.zeros(edged.shape, dtype=np.uint8)
         color_white = np.ones(edged.shape, dtype=np.uint8) * 231
         return np.stack([color_black,color_white,edged],axis=-1)
