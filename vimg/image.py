@@ -1,6 +1,6 @@
 # coding=utf-8
 """ An image viewer for the command line. """
-
+from __future__ import division
 import os
 import sys
 import math
@@ -125,8 +125,8 @@ for (c,m) in CHAR_TEMPLATES:
     ##
     ## Skip characters where the resolution doesn't match the cellsize:
     ##
-    if ((m < 1).sum(axis=0) / m.shape[0] * CELLSIZE[0] % 1).any() or \
-       ((m < 1).sum(axis=1) / m.shape[1] * CELLSIZE[1] % 1).any():
+    if ((m < 0).sum(axis=0) / float(m.shape[0]) * CELLSIZE[0] % 1).any() or \
+       ((m < 0).sum(axis=1) / float(m.shape[1]) * CELLSIZE[1] % 1).any():
         continue
     ratio = (m==0).sum() / m.size
     w = inflate_array(m, CELLSIZE)
