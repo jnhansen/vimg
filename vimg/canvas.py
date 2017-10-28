@@ -3,6 +3,7 @@ import sys
 import curses
 from threading import Timer
 
+FLAG_TTY = sys.stdout.isatty()
 PY2 = sys.version_info < (3,0)
 
 class GUI:
@@ -20,7 +21,7 @@ class GUI:
         """
         self.image = image
         self.mode = mode
-        self.WINDOW = curses.initscr()
+        self.start()
 
         self.OFFSET_Y = (1,1)
         self.OFFSET_X = (0,0)
@@ -34,15 +35,6 @@ class GUI:
         self.DEFAULT_BG_COLOR = 0
         self.ZOOM_DELAY = 0.2
 
-        curses.noecho()
-        curses.cbreak()
-        curses.curs_set(0)
-        self.WINDOW.keypad(1)
-        curses.mousemask(1)
-
-        curses.start_color()
-        curses.use_default_colors()
-
         self._fg_color = self.DEFAULT_FG_COLOR
         self._bg_color = self.DEFAULT_BG_COLOR
         self._cursor_x = 0
@@ -52,7 +44,36 @@ class GUI:
 
         self._stdout = ''
 
-        self.clear()
+        if FLAG_TTY:
+            self.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.quit()
+
+    def start(self):
+        """ Start curses application. """
+        self.WINDOW = curses.initscr()
+        if FLAG_TTY:
+            curses.start_color()
+            curses.use_default_colors()
+            curses.noecho()
+            curses.cbreak()
+            curses.curs_set(0)
+            self.WINDOW.keypad(1)
+            curses.mousemask(1)
+
+    def quit(self):
+        """ End curses application. """
+        # if FLAG_TTY:
+        self._cancel_render()
+        curses.nocbreak()
+        curses.echo()
+        curses.curs_set(1)
+        curses.mousemask(0)
+        curses.endwin()
 
     @property
     def term_height(self):
@@ -152,7 +173,7 @@ class GUI:
             curses.COLOR_WHITE, 0
         )
         statusline_bottom = self._print(
-            ('{:%s}'%self.term_width).format(' c:color  e:edges  r:refresh  q:quit  +/-:zoom  hjkl:move'),
+            ('{:%s}'%self.term_width).format(' c:color  e:edges  r:refresh  q:quit  +/-:zoom  hjkl:move  0:reset'),
             0,self.term_height-1,
             curses.COLOR_WHITE, 0
         )
@@ -204,21 +225,14 @@ class GUI:
         with open('stdout.log','w') as f:
             f.write(self._stdout + '\n')
 
-    def quit(self):
-        """ End curses application. """
-        curses.nocbreak()
-        curses.echo()
-        curses.curs_set(1)
-        curses.mousemask(0)
-        curses.endwin()
-
     def render(self, refresh=True):
         """ Render the image and print to screen. """
         im = self.image.render(shape=self.shape, mode=self.mode)
         xpos = int((self.width - im.shape[1])/2)
         ypos = int((self.height - im.shape[0])/2)
         self.clear_buffer()
-        self.clear()
+        if FLAG_TTY:
+            self.clear()
 
         for y,line in enumerate(im):
             for x,vec in enumerate(line):
@@ -227,7 +241,7 @@ class GUI:
                 fg = int(fg)
                 self.printat(char, x+xpos+self.OFFSET_X[0], y+ypos+self.OFFSET_Y[0], color=fg, bg=bg)
 
-        if refresh:
+        if refresh and FLAG_TTY:
             self.refresh()
 
     def getch(self):
@@ -243,6 +257,10 @@ class GUI:
             self._render_timer = None
         self._render_timer = Timer(seconds, wrapper)
         self._render_timer.start()
+
+    def _cancel_render(self):
+        if self._render_timer is not None:
+            self._render_timer.cancel()
 
     def _screen2pixel(self,x,y):
         """ Not implemented. """
@@ -304,6 +322,7 @@ class GUI:
                     self.image.move_right()
                     self._schedule_render(self.ZOOM_DELAY)
                 elif c == ord('q'):
+                    self._cancel_render()
                     break
 
         except Exception as e:

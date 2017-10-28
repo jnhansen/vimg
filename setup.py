@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='vimg',
-      version='0.4.1',
+      version='0.4.2',
       description='An image viewer for the command line',
       long_description=readme(),
       keywords='cli terminal console image picture graphics viewer preview',
@@ -28,7 +28,6 @@ setup(name='vimg',
       packages=find_packages(),
       install_requires=[
         'numpy',
-        'scipy',
         'opencv-python',
       ],
       entry_points={

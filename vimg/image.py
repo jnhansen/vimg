@@ -8,14 +8,13 @@ import cv2
 import numpy as np
 import random
 import multiprocessing as mp
-import scipy.ndimage
 
 PY2 = sys.version_info < (3,0)
 
 ##
 ## Use multiprocessing?
 ##
-FLAG_MP = False
+FLAG_MP = True
 
 ##
 ## FONT_ASPECT is the height-to-width ratio of a character slot in the terminal.
@@ -24,7 +23,7 @@ FONT_ASPECT = 30./14
 ##
 ## CHANNEL_VALUES are the values that each RGB channel can take in the set of xterm-256 colors.
 ##
-CHANNEL_VALUES = np.array((0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff))
+CHANNEL_VALUES = np.expand_dims((0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff),axis=-1)
 ##
 ## Create grayscale lookup dictionaries
 ##
@@ -54,54 +53,97 @@ ASCII_CHARS_SET = [
 ##
 CELLSIZE = (8,4)        # rows,columns
 CHAR_TEMPLATES = [
-    # (character, mask)
-    # (u'▀', np.transpose([[1,0]])),         # Upper half block
-    (u'▁', np.transpose([[0,0,0,0,0,0,0,1]])),         # Lower one eighth block
-    (u'▂', np.transpose([[0,0,0,1]])),         # Lower one quarter block
-    (u'▃', np.transpose([[0,0,0,0,0,1,1,1]])),         # Lower three eighths block
-    (u'▄', np.transpose([[0,1]])),         # Lower half block
-    (u'▅', np.transpose([[0,0,0,1,1,1,1,1]])),         # Lower five eighths block
-    (u'▆', np.transpose([[0,1,1,1]])),         # Lower three quarters block
-    (u'▇', np.transpose([[0,1,1,1,1,1,1,1]])),         # Lower seven eighths block
-    # # (u'█', np.array([[1]])),       # Full block
-    (u'▉', np.array([[1,1,1,1,1,1,1,0]])),         # Left seven eighths block
-    (u'▊', np.array([[1,1,1,0]])),       # Left three quarters block
-    (u'▋', np.array([[1,1,1,1,1,0,0,0]])),         # Left five eighths block
-    (u'▌', np.array([[1,0]])),         # Left half block
-    (u'▍', np.array([[1,1,1,0,0,0,0,0]])),         # Left three eighths block
-    (u'▎', np.array([[1,0,0,0]])),         # Left one quarter block
-    (u'▏', np.array([[1,0,0,0,0,0,0,0]])),         # Left one eighth block
-    # (u'▐', np.array([[0,1]])),         # Right half block
-    # (u'▔', np.transpose([[1,0,0,0,0,0,0,0]])),         # Upper one eighth block
-    # (u'▕', np.array([[0,0,0,0,0,0,0,1]])),         # Right one eighth block
-    (u'▖', np.array([[0,0],[1,0]])),       # Quadrant lower left
-    (u'▗', np.array([[0,0],[0,1]])),       # Quadrant lower right
-    (u'▘', np.array([[1,0],[0,0]])),       # Quadrant upper left
-    (u'▝', np.array([[0,1],[0,0]])),       # Quadrant upper right
-    # (u'▙', np.array([[1,0],[1,1]])),       # Quadrant upper left and lower left and lower right
-    # (u'▛', np.array([[1,1],[1,0]])),       # Quadrant upper left and upper right and lower left
-    # (u'▜', np.array([[1,1],[0,1]])),       # Quadrant upper left and upper right and lower right
-    # (u'▟', np.array([[0,1],[1,1]])),       # Quadrant upper right and lower left and lower right
-    (u'▞', np.array([[0,1],[1,0]])),       # Quadrant upper right and lower left
-    # (u'▚', np.array([[1,0],[0,1]])),       # Quadrant upper left and lower right
+    # (character, mask with weights)
+    (u'▁', np.transpose([[ 4, 4, 4, 3, 3, 1, 1,-1]])),      # Lower one eighth block
+    (u'▂', np.transpose([[ 4, 4, 3, 3, 1, 1,-1,-1]])),      # Lower one quarter block
+    (u'▃', np.transpose([[ 4, 3, 3, 1, 1,-1,-1,-3]])),      # Lower three eighths block
+    (u'▄', np.transpose([[ 3, 3, 1, 1,-1,-1,-3,-3]])),      # Lower half block
+    (u'▅', np.transpose([[ 3, 1, 1,-1,-1,-3,-3,-4]])),      # Lower five eighths block
+    (u'▆', np.transpose([[ 1, 1,-1,-1,-3,-3,-4,-4]])),      # Lower three quarters block
+    (u'▇', np.transpose([[ 1,-1,-1,-3,-3,-4,-4,-4]])),      # Lower seven eighths block
+    (u'■', np.transpose([[ 1, 1,-1,-2,-2,-1, 1, 1]])),      # Middle half block
+    (u'▉', np.array([[-4,-4,-4,-3,-3,-1,-1, 1]])),          # Left seven eighths block
+    (u'▊', np.array([[-4,-4,-3,-3,-1,-1, 1, 1]])),          # Left three quarters block
+    (u'▋', np.array([[-4,-3,-3,-1,-1, 1, 1, 3]])),          # Left five eighths block
+    (u'▌', np.array([[-3,-3,-1,-1, 1, 1, 3, 3]])),          # Left half block
+    (u'▍', np.array([[-3,-1,-1, 1, 1, 3, 3, 4]])),          # Left three eighths block
+    (u'▎', np.array([[-1,-1, 1, 1, 3, 3, 4, 4]])),          # Left one quarter block
+    (u'▏', np.array([[-1, 1, 1, 3, 3, 4, 4, 4]])),          # Left one eighth block
+    (u'▖', np.array([[ 1, 2],[-1, 1]])),                    # Quadrant lower left
+    (u'▗', np.array([[ 2, 1],[ 1,-1]])),                    # Quadrant lower right
+    (u'▘', np.array([[-1, 1],[ 1, 2]])),                    # Quadrant upper left
+    (u'▝', np.array([[ 1,-1],[ 2, 1]])),                    # Quadrant upper right
+    (u'▞', np.array([[ 1,-1],[-1, 1]])),                    # Quadrant upper right and lower left
 ]
+
+def groupby(values):
+    diff = np.concatenate(([1],np.diff(values)))
+    idx = np.concatenate((np.where(diff)[0],[len(values)]))
+    index = np.empty(len(idx)-1,dtype='i8,u2')
+    index['f0']=values[idx[:-1]]
+    index['f1']=np.diff(idx)
+    return index
+
+def inflate_array(array, shape):
+    """ Inflate array to given shape using constant (order 0) interpolation.
+
+    Parameters
+    ----------
+    array : numpy.array
+        The numpy array to be inflated.
+    shape : tuple
+        The requested shape. The components of `shape` must be integer divisible by the components
+        of the array shape.
+
+    Returns
+    -------
+    numpy.array
+        A numpy array of shape `shape`.
+    """
+    if 1 in array.shape:
+        ##
+        ## Reduce to smallest possible representation
+        ##
+        grouped = groupby(array.flatten())
+        counts = np.unique(grouped['f1'])
+        if len(counts) == 1:
+            if array.shape[0] == 1:
+                new_shape = (1, int(array.shape[1] / counts[0]))
+            else:
+                new_shape = (int(array.shape[0] / counts[0]), 1)
+            array = grouped['f0'].reshape(new_shape)
+    zoomy, zoomx = np.array(shape) / array.shape
+    zoomy = int(zoomy)
+    zoomx = int(zoomx)
+    return np.repeat(np.repeat(array,zoomy,axis=0),zoomx,axis=1)
 
 ##
 ## Create masks with CELLSIZE shape
 ##
 CHARS = []
-for (c,mask) in CHAR_TEMPLATES:
+for (c,m) in CHAR_TEMPLATES:
     ##
     ## Skip characters where the resolution doesn't match the cellsize:
     ##
-    if not (CELLSIZE[0] % mask.shape[0] == 0) or not (CELLSIZE[1] % mask.shape[1] == 0):
+    if ((m < 1).sum(axis=0) / m.shape[0] * CELLSIZE[0] % 1).any() or \
+       ((m < 1).sum(axis=1) / m.shape[1] * CELLSIZE[1] % 1).any():
         continue
+    ratio = (m==0).sum() / m.size
+    w = inflate_array(m, CELLSIZE)
+    mask = (w < 0)
+    weights1 = np.where(mask,w,0)
+    weights0 = np.where(~mask,w,0)
+    weights1 = weights1 / weights1.sum()
+    weights0 = weights0 / weights0.sum()
+    weights1 = np.expand_dims(weights1, axis=-1)
+    weights0 = np.expand_dims(weights0, axis=-1)
+    CHARS.append((c,ratio,mask,weights1,weights0))
 
-    ratio = mask.sum() / mask.size
-    zoom = np.array(CELLSIZE) / mask.shape
-    mask = scipy.ndimage.zoom(mask, zoom, order=0)
-    mask = np.stack([mask,mask,mask],axis=-1).astype(bool)
-    CHARS.append((c,ratio,mask))
+##
+## Turn into array
+##
+WEIGHTS_1 = np.stack([w1 for _,_,m,w1,w0 in CHARS],axis=-1)     # shape: (Y,X,1,N)
+WEIGHTS_0 = np.stack([w0 for _,_,m,w1,w0 in CHARS],axis=-1)     # shape: (Y,X,1,N)
 
 ##
 ## COLOR CONVERSION HELPERS
@@ -112,8 +154,8 @@ def rgb_bracket(rgb):
 
     Parameters
     ----------
-    rgb : tuple
-        An RGB tuple, i.e. three integers between 0 and 255
+    rgb : numpy.array
+        An RGB array, i.e. three integers between 0 and 255
 
     Returns
     -------
@@ -122,7 +164,7 @@ def rgb_bracket(rgb):
         that yields the best approximation to the given color.
     """
     rgb1 = rgb_closest(rgb, asint=False)
-    rgb2 = rgb_closest(2*np.array(rgb) - rgb1, asint=False)
+    rgb2 = rgb_closest(2*rgb - rgb1, asint=False)
     d1 = colordiff(rgb,rgb1)
     d2 = colordiff(rgb,rgb2)
     if d1==0 and d2==0:
@@ -136,8 +178,8 @@ def rgb_closest(rgb,asint=True):
 
     Parameters
     ----------
-    rgb : tuple
-        An RGB tuple, i.e. three integers between 0 and 255
+    rgb : numpy.array
+        An RGB array, i.e. three integers between 0 and 255
     asint : bool, optional
         Whether to return the integer representation instead of an RGB tuple (default: True)
 
@@ -147,15 +189,13 @@ def rgb_closest(rgb,asint=True):
         The integer representation of the closest xterm-256 color. If asint is False, returns an RGB
         tuple instead.
     """
-    xterm_color = []
-    for channel in rgb:
-        diff = abs(CHANNEL_VALUES - channel)
-        xterm_color.append(CHANNEL_VALUES[diff.argmin()])
+    diff = abs(CHANNEL_VALUES - rgb)
+    xterm_color = CHANNEL_VALUES[diff.argmin(axis=0)].flatten()
     ##
     ## Consider grayscale
     ##
     mindiff = colordiff(rgb,xterm_color)
-    rgb_mean = np.mean(rgb)
+    rgb_mean = rgb.sum()/rgb.size
     graydiff = abs(GRAYSCALE_VALUES - rgb_mean)
     gray = GRAYSCALE_VALUES[graydiff.argmin()]
     rgb_gray = (gray,gray,gray)
@@ -164,7 +204,7 @@ def rgb_closest(rgb,asint=True):
     if asint:
         return rgb_lookup(xterm_color)
     else:
-        return tuple(xterm_color)
+        return xterm_color
 
 def rgb_reverse_lookup(index):
     """ Find the RGB value of the xterm-256 color associated with the given integer.
@@ -190,15 +230,15 @@ def rgb_reverse_lookup(index):
         (remainder1 - remainder2) / 6,
         remainder2
     ], dtype=np.int)
-    return CHANNEL_VALUES[pos]
+    return CHANNEL_VALUES[pos].flatten()
 
 def rgb_lookup(rgb):
     """ Return the integer representation of an xterm-256 compatible RGB color.
 
     Parameters
     ----------
-    rgb : tuple
-        tuple of RGB channels, each between 0 and 255
+    rgb : numpy.array
+        numpy.array of RGB channels, each between 0 and 255
 
     Returns
     -------
@@ -207,16 +247,7 @@ def rgb_lookup(rgb):
     """
     if rgb[0]==rgb[1] and rgb[0]==rgb[2] and rgb[0] in GRAYSCALE_LOOKUP:
         return GRAYSCALE_LOOKUP[rgb[0]]
-    pos=[]
-    for channel in rgb:
-        found = False
-        for i,v in enumerate(CHANNEL_VALUES):
-            if v == channel:
-                pos.append(i)
-                found = True
-                break
-        if not found:
-            return False
+    pos = (CHANNEL_VALUES == rgb).argmax(axis=0)
     return 16 + 36 * pos[0] + 6 * pos[1] + pos[2]
 
 def rgb2color(rgb):
@@ -225,8 +256,8 @@ def rgb2color(rgb):
 
     Parameters
     ----------
-    rgb : tuple
-        tuple of RGB channels, each between 0 and 255
+    rgb : numpy.array
+        numpy.array of RGB channels, each between 0 and 255
 
     Returns
     -------
@@ -289,9 +320,9 @@ def colordiff(rgb1,rgb2):
 
     Parameters
     ----------
-    rgb1 : tuple(int,int,int)
+    rgb1 : numpy.array
         First RGB color
-    rgb2 : tuple(int,int,int)
+    rgb2 : numpy.array
         Second RGB color
 
     Returns
@@ -301,16 +332,16 @@ def colordiff(rgb1,rgb2):
     """
     r1,g1,b1=rgb1
     r2,g2,b2=rgb2
-    return np.sqrt((float(r1)-float(r2))**2 + (float(g1)-float(g2))**2 + (float(b1)-float(b2))**2)
+    return (float(r1)-float(r2))**2 + (float(g1)-float(g2))**2 + (float(b1)-float(b2))**2
 
 def pixels2cell(pixels):
-    """ Convert an 8x8 pixel array to the best possible representation by a character, background
+    """ Convert a pixel array to the best possible representation by a character, background
     and foregrund color.
 
     Parameters
     ----------
     pixels : numpy.array
-        numpy.array of shape (8,8,3) representing 8x8 RGB pixels
+        numpy.array representing RGB pixels. Must be reshapable into CELLSIZE+(3,)
 
     Returns
     -------
@@ -318,9 +349,8 @@ def pixels2cell(pixels):
         The optimal background color, foreground color and character to represent the two pixels in
         a single character cell.
     """
-    if not pixels.shape == CELLSIZE + (3,):
-        pixels = pixels.reshape( CELLSIZE + (3,) )
-
+    if not pixels.shape == CELLSIZE + (3,1,):
+        pixels = pixels.reshape( CELLSIZE + (3,1,) )
     ##
     ## Compute the contrast between
     ##
@@ -329,44 +359,50 @@ def pixels2cell(pixels):
     fg_color_rgb = None
     bg_color_approx = None
     fg_color_approx = None
-    max_contrast = -1
+    max_sep = None
+    max_colordiff = None
 
-
-    if pixels[:,:,0].var() == 0 and pixels[:,:,1].var() == 0 and pixels[:,:,2].var() == 0:
-        ##
-        ## All pixels are equal --> no need to loop through masks
-        ##
-        max_contrast = 0
-        bg_color_rgb = fg_color_rgb = pixels.mean(axis=0).mean(axis=0).astype(int)
-        bg_color_approx = fg_color_approx = rgb_closest(bg_color_rgb,asint=False)
+    ##
+    ## Choose mask with best inter-pixel contrast
+    ##
+    # (Y,X) is the cellsize
+    # N is the number of available characters for the chosen cellsize
+    p_1 = pixels * WEIGHTS_1        # shape: (Y,X,3,N)
+    p_0 = pixels * WEIGHTS_0        # shape: (Y,X,3,N)
+    # compute means
+    rgb_1 = p_1.sum(axis=(0,1))     # shape: (3,N)
+    rgb_0 = p_0.sum(axis=(0,1))     # shape: (3,N)
+    # compute variances (exclude 0 weights)
+    var_1 = np.where(WEIGHTS_1 != 0, pixels - rgb_1, 0)**2  # shape: (Y,X,3,N)
+    var_0 = np.where(WEIGHTS_0 != 0, pixels - rgb_0, 0)**2  # shape: (Y,X,3,N)
+    # reduce variance dimension
+    var_1 = var_1.sum(axis=(0,1,2))                         # shape: (N,)
+    var_0 = var_0.sum(axis=(0,1,2))                         # shape: (N,)
+    var_within = var_1 + var_0                              # shape: (N,)
+    # deal with 0 variance
+    zero_var = (var_within == 0)
+    if zero_var.any():
+        # Return first entry where the variance is zero
+        max_index = zero_var.argmax()
+        max_colordiff = colordiff(rgb_1[:,max_index],rgb_0[:,max_index])
     else:
-        ##
-        ## Choose mask with best inter-pixel contrast
-        ##
-        for (c,r,mask) in CHARS:
-            ##
-            ## Compute mask-specific color contrast
-            ##
-            m = mask[:,:,0]
-            ##
-            ## If r < 0.5 (the printable character is small),
-            ## favor colors away from the character for the background.
-            ##
-            # ...
-            rgb1 = pixels[~m].mean(axis=0)
-            rgb2 = pixels[m].mean(axis=0)
-            contrast = colordiff(rgb1,rgb2)
-            if contrast > max_contrast:
-                max_contrast = contrast
-                char = c
-                bg_color_rgb = rgb1
-                fg_color_rgb = rgb2
+        # Compute contrast measure per mask
+        contrast = ((rgb_1 - rgb_0)**2).sum(axis=0)         # shape: (N,)
+        sep = contrast / var_within                         # shape: (N,)
+        max_index = sep.argmax()                            # scalar
+        max_sep = sep[max_index]                            # scalar
+        max_colordiff = contrast[max_index]                 # scalar
 
-        bg_color_approx = rgb_closest(bg_color_rgb,asint=False)
-        fg_color_approx = rgb_closest(fg_color_rgb,asint=False)
+    # Results
+    char = CHARS[max_index][0]
+    fg_color_rgb = rgb_1[:,max_index]
+    bg_color_rgb = rgb_0[:,max_index]
 
-    if ( colordiff(bg_color_rgb,bg_color_approx) < 10 and colordiff(fg_color_rgb,fg_color_approx) < 10 ) \
-        or max_contrast > 30:
+    bg_color_approx = rgb_closest(bg_color_rgb,asint=False)
+    fg_color_approx = rgb_closest(fg_color_rgb,asint=False)
+
+    if max_colordiff > 40 or \
+      ( colordiff(bg_color_rgb,bg_color_approx) < 10 and colordiff(fg_color_rgb,fg_color_approx) < 10 ):
         ##
         ## If the two cell part colors sufficiently accurate OR
         ## very different from each other, display them as different pixels.
@@ -378,8 +414,7 @@ def pixels2cell(pixels):
         ##
         ## Else, try to improve color accuracy by mixing colors.
         ##
-        rgb = pixels.mean(axis=0).mean(axis=0).astype(int)
-        # rgb = (0.5 * (r*np.array(fg_color_rgb) + (1-r)*np.array(bg_color_rgb))).astype(int)
+        rgb = pixels.mean(axis=(0,1,3))
         bg_color, fg_color, ratio = rgb_bracket(rgb)
         char = ratio2char(ratio)
 
@@ -394,8 +429,8 @@ def best_representation(values):
 
     Parameters
     ----------
-    values : tuple(int,int,int,int,int.int)
-        The RGB values of two vertically stacked pixels as a single 6-tuple.
+    values : numpy.array
+        The RGB values of two vertically stacked pixels as a single numpy array of length 6.
 
     Returns
     -------
@@ -403,25 +438,26 @@ def best_representation(values):
         The optimal background color, foreground color and character to represent the two pixels in
         a single character cell.
     """
-    ur,ug,ub,lr,lg,lb = values
+    upper = values[:3]
+    lower = values[3:]
 
-    upper_main_color = rgb_closest((ur,ug,ub),asint=False)
-    lower_main_color = rgb_closest((lr,lg,lb),asint=False)
+    upper_closest = rgb_closest(upper,asint=False)
+    lower_closest = rgb_closest(lower,asint=False)
 
-    if ( colordiff((ur,ug,ub),upper_main_color) < 10 and colordiff((lr,lg,lb),lower_main_color) < 10 ) \
-        or colordiff((ur,ug,ub),(lr,lg,lb)) > 50:
+    if ( colordiff(upper,upper_closest) < 10 and colordiff(lower,lower_closest) < 10 ) \
+        or colordiff(upper,lower) > 50:
         ##
         ## If upper_pixel and lower_pixel are sufficiently accurate or
         ## very different from each other, display them as different pixels.
         ##
-        bg_color = rgb_lookup(upper_main_color)
-        fg_color = rgb_lookup(lower_main_color)
+        bg_color = rgb_lookup(upper_closest)
+        fg_color = rgb_lookup(lower_closest)
         char = u'\u2584'
     else:
         ##
         ## Else, try to improve color accuracy by mixing colors.
         ##
-        rgb = (int(ur/2+lr/2), int(ug/2+lg/2), int(ub/2+lb/2))
+        rgb = 0.5*upper + 0.5*lower
         bg_color, fg_color, ratio = rgb_bracket(rgb)
         char = ratio2char(ratio)
 
@@ -751,7 +787,6 @@ class Image:
             )), int(h/CELLSIZE[0]), axis=1
         ))
         cells = cells.reshape(cells.shape[0], cells.shape[1], CELLSIZE[0]*CELLSIZE[1]*3)
-        # cells = rgb_image.reshape((w,h,)).reshape((int(w/8),int(h/8),192))
         if FLAG_MP:
             result = parallel_apply_along_axis(pixels2cell,2,cells)
         else:
